@@ -33,7 +33,7 @@ public class UserServiceGatewayImpl implements UserServiceGateway {
 
     @Getter
     public enum Operations {
-        GET_BY_USER_UUID("/user/{userId}");
+        GET_BY_USER_UUID("//user/{userId}");
 
         private final String resourcePath;
 
