@@ -7,13 +7,7 @@ import com.algobrewery.tasksilo.exceptions.NotFoundException;
 import com.algobrewery.tasksilo.exceptions.ServiceException;
 import com.algobrewery.tasksilo.gateway.UserServiceGateway;
 import com.algobrewery.tasksilo.model.entity.Task;
-import com.algobrewery.tasksilo.model.internal.CreateTaskInternalRequest;
-import com.algobrewery.tasksilo.model.internal.CreateTaskInternalResponse;
-import com.algobrewery.tasksilo.model.internal.GetTaskInternalRequest;
-import com.algobrewery.tasksilo.model.internal.GetTaskInternalResponse;
-import com.algobrewery.tasksilo.model.internal.ResponseReasonCode;
-import com.algobrewery.tasksilo.model.internal.ResponseResult;
-import com.algobrewery.tasksilo.model.internal.TaskDTO;
+import com.algobrewery.tasksilo.model.internal.*;
 import com.algobrewery.tasksilo.repository.task.TaskRepository;
 import com.algobrewery.tasksilo.service.TaskService;
 import lombok.RequiredArgsConstructor;
@@ -148,6 +142,66 @@ public class TaskServiceImpl implements TaskService {
         }
         if (cause instanceof ServiceException) {
             return GetTaskInternalResponse.builder()
+                    .responseResult(ResponseResult.FAILURE)
+                    .responseReasonCode(ResponseReasonCode.INTERNAL_ERROR)
+                    .build();
+        }
+        throw new CompletionException(new ServiceException(cause));
+    }
+    @Override
+    public CompletableFuture<UpdateTaskInternalResponse> updateTask(UpdateTaskInternalRequest request) {
+        return CompletableFuture.completedFuture(
+                        Specification.where(withTaskUuid(request.getTaskDTO().getTaskUuid()))
+                                .and(withOrganizationUuid(request.getRequestContext().getAppOrgUuid())))
+                .thenCompose(this::getTask)
+                .thenCompose(task -> updateTask(task, request.getTaskDTO()))
+                .thenCompose(this::buildUpdateTaskInternalResponse)
+                .exceptionally(this::handleUpdateTaskException);
+    }
+
+    private CompletableFuture<Task> updateTask(Task existingTask, TaskDTO updatedTaskDTO) {
+        try {
+            Task updatedTask = taskConverter.doForward(updatedTaskDTO);
+            updatedTask.setCreatedAt(existingTask.getCreatedAt()); // Preserve original creation time
+            return CompletableFuture.completedFuture(taskRepository.save(updatedTask));
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(new ServiceException(e.getMessage(), e.getCause()));
+        }
+    }
+
+    private CompletableFuture<UpdateTaskInternalResponse> buildUpdateTaskInternalResponse(Task task) {
+        return CompletableFuture.completedFuture(UpdateTaskInternalResponse.builder()
+                .responseResult(ResponseResult.SUCCESS)
+                .responseReasonCode(ResponseReasonCode.SUCCESS)
+                .build());
+    }
+
+    private UpdateTaskInternalResponse handleUpdateTaskException(Throwable ex) {
+        log.error("handleUpdateTaskException", ex);
+        Throwable cause = ex;
+        if (!Objects.isNull(ex) && ex instanceof CompletionException) {
+            cause = ex.getCause();
+        }
+        if (cause instanceof InvalidRequestError) {
+            return UpdateTaskInternalResponse.builder()
+                    .responseResult(ResponseResult.FAILURE)
+                    .responseReasonCode(ResponseReasonCode.BAD_REQUEST)
+                    .build();
+        }
+        if (cause instanceof NotFoundException) {
+            return UpdateTaskInternalResponse.builder()
+                    .responseResult(ResponseResult.FAILURE)
+                    .responseReasonCode(ResponseReasonCode.BAD_REQUEST)
+                    .build();
+        }
+        if (cause instanceof GatewayTimeoutException) {
+            return UpdateTaskInternalResponse.builder()
+                    .responseResult(ResponseResult.FAILURE)
+                    .responseReasonCode(ResponseReasonCode.TIMEOUT)
+                    .build();
+        }
+        if (cause instanceof ServiceException) {
+            return UpdateTaskInternalResponse.builder()
                     .responseResult(ResponseResult.FAILURE)
                     .responseReasonCode(ResponseReasonCode.INTERNAL_ERROR)
                     .build();

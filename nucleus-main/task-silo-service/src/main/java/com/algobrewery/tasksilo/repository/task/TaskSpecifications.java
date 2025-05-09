@@ -10,7 +10,7 @@ public class TaskSpecifications {
             if (taskUuid == null) {
                 return null;
             }
-            return cb.equal(root.get("task_uuid"), taskUuid);
+            return cb.equal(root.get("taskUuid"), taskUuid); // Changed from "task_uuid" to "taskUuid"
         };
     }
 
@@ -19,7 +19,7 @@ public class TaskSpecifications {
             if (organizationUuid == null) {
                 return null;
             }
-            return cb.equal(root.get("org_uuid"), organizationUuid);
+            return cb.equal(root.get("organizationUuid"), organizationUuid); // Changed from "org_uuid" to "organizationUuid"
         };
     }
 }
