@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -90,10 +91,11 @@ public class TaskServiceImpl implements TaskService {
         throw new CompletionException(new ServiceException(cause));
     }
 
+    @Override
     public CompletableFuture<GetTaskInternalResponse> getTask(GetTaskInternalRequest request) {
         return CompletableFuture.completedFuture(
-                Specification.where(withTaskUuid(request.getTaskUuid()))
-                             .and(withOrganizationUuid(request.getRequestContext().getAppOrgUuid())))
+                        Specification.where(withTaskUuid(request.getTaskUuid()))
+                                .and(withOrganizationUuid(request.getRequestContext().getAppOrgUuid())))
                 .thenCompose(this::getTask)
                 .thenCompose(this::buildGetTaskInternalResponse)
                 .exceptionally(this::handleGetTaskException);
@@ -148,23 +150,47 @@ public class TaskServiceImpl implements TaskService {
         }
         throw new CompletionException(new ServiceException(cause));
     }
+
     @Override
     public CompletableFuture<UpdateTaskInternalResponse> updateTask(UpdateTaskInternalRequest request) {
         return CompletableFuture.completedFuture(
-                        Specification.where(withTaskUuid(request.getTaskDTO().getTaskUuid()))
+                        Specification.where(withTaskUuid(request.getTaskUuid()))
                                 .and(withOrganizationUuid(request.getRequestContext().getAppOrgUuid())))
                 .thenCompose(this::getTask)
-                .thenCompose(task -> updateTask(task, request.getTaskDTO()))
+                .thenCompose(task -> updateTaskFields(task, request))
                 .thenCompose(this::buildUpdateTaskInternalResponse)
                 .exceptionally(this::handleUpdateTaskException);
     }
 
-    private CompletableFuture<Task> updateTask(Task existingTask, TaskDTO updatedTaskDTO) {
+    private CompletableFuture<Task> updateTaskFields(Task task, UpdateTaskInternalRequest request) {
         try {
-            Task updatedTask = taskConverter.doForward(updatedTaskDTO);
-            updatedTask.setCreatedAt(existingTask.getCreatedAt()); // Preserve original creation time
-            return CompletableFuture.completedFuture(taskRepository.save(updatedTask));
+            task.setTitle(request.getTitle());
+            task.setDescription(request.getDescription());
+            if (request.getAssigneeUuid() != null) {
+                task.setAssigneeUuid(request.getAssigneeUuid());
+                task.setAssigneeUuidType(request.getAssigneeUuidType().name());
+            }
+            task.setDueAt(request.getDueAt());
+            if (request.getUpdateActorType() != null) {
+                task.setUpdateActorType(request.getUpdateActorType().name());
+            }
+            task.setStatus(request.getStatus().name());
+            if (request.getParentTaskUuid() != null) {
+                task.setParentTaskUuid(request.getParentTaskUuid());
+            }
+            if (request.getChildTaskUuid() != null) {
+                String[] childTaskUuids = task.getChildTaskUuids();
+                String[] newChildTaskUuids = new String[childTaskUuids.length + 1];
+                System.arraycopy(childTaskUuids, 0, newChildTaskUuids, 0, childTaskUuids.length);
+                newChildTaskUuids[childTaskUuids.length] = request.getChildTaskUuid();
+                task.setChildTaskUuids(newChildTaskUuids);
+            }
+            task.setExtensionsData(request.getExtensionsData());
+            task.setUpdatedAt(LocalDateTime.now());
+
+            return CompletableFuture.completedFuture(taskRepository.save(task));
         } catch (Exception e) {
+            log.error("Error updating task: {}", task.getTaskUuid(), e);
             return CompletableFuture.failedFuture(new ServiceException(e.getMessage(), e.getCause()));
         }
     }
@@ -208,5 +234,4 @@ public class TaskServiceImpl implements TaskService {
         }
         throw new CompletionException(new ServiceException(cause));
     }
-
-}
+} 

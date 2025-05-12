@@ -1,12 +1,11 @@
-// UpdateTaskRequestConverter.java
 package com.algobrewery.tasksilo.converter;
 
 import com.algobrewery.tasksilo.model.external.UpdateTaskRequest;
-import com.algobrewery.tasksilo.model.internal.*;
+import com.algobrewery.tasksilo.model.internal.TaskAssigneeIDType;
+import com.algobrewery.tasksilo.model.internal.TaskStatus;
+import com.algobrewery.tasksilo.model.internal.TaskUpdateActorType;
+import com.algobrewery.tasksilo.model.internal.UpdateTaskInternalRequest;
 import org.springframework.stereotype.Component;
-
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 
 @Component("UpdateTaskRequestConverter")
 public class UpdateTaskRequestConverter extends ExternalToInternalRequestConverter<UpdateTaskRequest, UpdateTaskInternalRequest> {
@@ -19,25 +18,20 @@ public class UpdateTaskRequestConverter extends ExternalToInternalRequestConvert
             String traceID,
             String regionID,
             UpdateTaskRequest external) {
-        LocalDateTime current = LocalDateTime.now();
         return UpdateTaskInternalRequest.builder()
-                .taskDTO(TaskDTO.builder()
-                        .taskUuid(external.getRequestContext().getTaskUuid())
-                        .organizationUuid(orgUUID)
-                        .title(external.getTitle())
-                        .description(external.getDescription())
-                        .authorUuid(userUUID)
-                        .assigneeUuid(external.getAssigneeInfo() != null ? external.getAssigneeInfo().getUuid() : null)
-                        .assigneeUuidType(external.getAssigneeInfo() != null ?
-                                TaskAssigneeIDType.valueOf(external.getAssigneeInfo().getIdType().name()) : null)
-                        .dueAt(external.getDueAt())
-                        .updatedAt(current)
-                        .updateActorType(TaskUpdateActorType.valueOf(external.getUpdateActorType()))
-                        .status(TaskStatus.valueOf(external.getStatus()))
-                        .parentTaskUuid(external.getParentTaskUuid()) // Can be null
-                        .childTaskUuids(new ArrayList<>()) // Initialize empty list
-                        .extensionsData(external.getExtensionsData())
-                        .build())
+                .taskUuid(external.getRequestContext().getTaskUuid())
+                .title(external.getTitle())
+                .description(external.getDescription())
+                .assigneeUuid(external.getAssigneeInfo() != null ? external.getAssigneeInfo().getUuid() : null)
+                .assigneeUuidType(external.getAssigneeInfo() != null ?
+                        TaskAssigneeIDType.valueOf(external.getAssigneeInfo().getIdType().name()) : null)
+                .dueAt(external.getDueAt())
+                .updateActorType(external.getUpdateActorType() != null ?
+                        TaskUpdateActorType.valueOf(external.getUpdateActorType()) : null)
+                .status(TaskStatus.valueOf(external.getStatus()))
+                .parentTaskUuid(external.getParentTaskUuid())
+                .childTaskUuid(external.getChildTaskUuid())
+                .extensionsData(external.getExtensionsData())
                 .build();
     }
 }

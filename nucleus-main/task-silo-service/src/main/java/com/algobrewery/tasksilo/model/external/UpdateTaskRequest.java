@@ -1,4 +1,3 @@
-// UpdateTaskRequest.java
 package com.algobrewery.tasksilo.model.external;
 
 import jakarta.validation.constraints.NotBlank;
@@ -10,6 +9,7 @@ import java.util.Map;
 
 @Data
 public class UpdateTaskRequest {
+
     @NotNull
     private UpdateTaskRequestContext requestContext;
 
@@ -28,10 +28,8 @@ public class UpdateTaskRequest {
     @NotNull
     private String status;
 
-    // Made optional by removing @NotNull
     private String parentTaskUuid;
 
-    // Made optional by removing @NotNull
     private String childTaskUuid;
 
     @NotNull
