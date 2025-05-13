@@ -63,9 +63,13 @@ public class TaskDTO {
                         builder.description(this.description);
                         break;
                     case "author":
+                    case "authoruuid":
+                    case "author_uuid":
                         builder.authorUuid(this.authorUuid);
                         break;
                     case "assignee":
+                    case "assigneeuuid":
+                    case "assignee_uuid":
                         builder.assigneeUuid(this.assigneeUuid)
                                 .assigneeUuidType(this.assigneeUuidType);
                         break;
@@ -74,10 +78,12 @@ public class TaskDTO {
                         break;
                     case "duedate":
                     case "due_at":
+                    case "dueat":
                         builder.dueAt(this.dueAt);
                         break;
                     case "organization":
                     case "organization_uuid":
+                    case "organizationuuid":
                         builder.organizationUuid(this.organizationUuid);
                         break;
                     case "createdat":
@@ -94,10 +100,12 @@ public class TaskDTO {
                         break;
                     case "parenttask":
                     case "parent_task_uuid":
+                    case "parenttaskuuid":
                         builder.parentTaskUuid(this.parentTaskUuid);
                         break;
                     case "childtasks":
                     case "child_task_uuids":
+                    case "childtaskuuids":
                         builder.childTaskUuids(this.childTaskUuids);
                         break;
                 }
@@ -124,10 +132,10 @@ public class TaskDTO {
             Map<String, Object> filteredExtensions = this.extensionsData.entrySet().stream()
                     .filter(entry -> extensions.contains(entry.getKey()))
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            builder.extensionsData(filteredExtensions);
-        } else {
-            // Initialize with empty map to avoid NPE
-            builder.extensionsData(new HashMap<>());
+
+            if (!filteredExtensions.isEmpty()) {
+                builder.extensionsData(filteredExtensions);
+            }
         }
 
         return builder.build();
