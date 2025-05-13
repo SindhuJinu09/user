@@ -7,8 +7,11 @@ import com.algobrewery.tasksilo.exceptions.NotFoundException;
 import com.algobrewery.tasksilo.exceptions.ServiceException;
 import com.algobrewery.tasksilo.gateway.UserServiceGateway;
 import com.algobrewery.tasksilo.model.entity.Task;
+import com.algobrewery.tasksilo.model.external.ListTasksFilterCriteriaAttribute;
+import com.algobrewery.tasksilo.model.external.ListTasksSelector;
 import com.algobrewery.tasksilo.model.internal.*;
 import com.algobrewery.tasksilo.repository.task.TaskRepository;
+import com.algobrewery.tasksilo.repository.task.TaskSpecifications;
 import com.algobrewery.tasksilo.service.TaskService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,12 +19,12 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.stream.Collectors;
 
-import static com.algobrewery.tasksilo.repository.task.TaskSpecifications.withOrganizationUuid;
-import static com.algobrewery.tasksilo.repository.task.TaskSpecifications.withTaskUuid;
+import static com.algobrewery.tasksilo.repository.task.TaskSpecifications.*;
 
 @Service
 @RequiredArgsConstructor
@@ -94,7 +97,7 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public CompletableFuture<GetTaskInternalResponse> getTask(GetTaskInternalRequest request) {
         return CompletableFuture.completedFuture(
-                        Specification.where(withTaskUuid(request.getTaskUuid()))
+                        Specification.where(TaskSpecifications.withTaskUuid(request.getTaskUuid()))
                                 .and(withOrganizationUuid(request.getRequestContext().getAppOrgUuid())))
                 .thenCompose(this::getTask)
                 .thenCompose(this::buildGetTaskInternalResponse)
@@ -154,7 +157,7 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public CompletableFuture<UpdateTaskInternalResponse> updateTask(UpdateTaskInternalRequest request) {
         return CompletableFuture.completedFuture(
-                        Specification.where(withTaskUuid(request.getTaskUuid()))
+                        Specification.where(TaskSpecifications.withTaskUuid(request.getTaskUuid()))
                                 .and(withOrganizationUuid(request.getRequestContext().getAppOrgUuid())))
                 .thenCompose(this::getTask)
                 .thenCompose(task -> updateTaskFields(task, request))
@@ -166,10 +169,25 @@ public class TaskServiceImpl implements TaskService {
         try {
             task.setTitle(request.getTitle());
             task.setDescription(request.getDescription());
+
             if (request.getAssigneeUuid() != null) {
-                task.setAssigneeUuid(request.getAssigneeUuid());
-                task.setAssigneeUuidType(request.getAssigneeUuidType().name());
+                return userServiceGateway.getUser(request.getRequestContext(), request.getAssigneeUuid())
+                        .thenCompose(userId -> {
+                            task.setAssigneeUuid(request.getAssigneeUuid());
+                            task.setAssigneeUuidType(request.getAssigneeUuidType().name());
+                            return updateRemainingFields(task, request);
+                        });
             }
+
+            return updateRemainingFields(task, request);
+        } catch (Exception e) {
+            log.error("Error updating task: {}", task.getTaskUuid(), e);
+            return CompletableFuture.failedFuture(new ServiceException(e.getMessage(), e.getCause()));
+        }
+    }
+
+    private CompletableFuture<Task> updateRemainingFields(Task task, UpdateTaskInternalRequest request) {
+        try {
             task.setDueAt(request.getDueAt());
             if (request.getUpdateActorType() != null) {
                 task.setUpdateActorType(request.getUpdateActorType().name());
@@ -185,12 +203,21 @@ public class TaskServiceImpl implements TaskService {
                 newChildTaskUuids[childTaskUuids.length] = request.getChildTaskUuid();
                 task.setChildTaskUuids(newChildTaskUuids);
             }
-            task.setExtensionsData(request.getExtensionsData());
+
+            Map<String, Object> existingExtensions = task.getExtensionsData();
+            Map<String, Object> newExtensions = request.getExtensionsData();
+            if (existingExtensions != null && newExtensions != null) {
+                existingExtensions.putAll(newExtensions);
+                task.setExtensionsData(existingExtensions);
+            } else {
+                task.setExtensionsData(newExtensions);
+            }
+
             task.setUpdatedAt(LocalDateTime.now());
 
             return CompletableFuture.completedFuture(taskRepository.save(task));
         } catch (Exception e) {
-            log.error("Error updating task: {}", task.getTaskUuid(), e);
+            log.error("Error updating remaining task fields: {}", task.getTaskUuid(), e);
             return CompletableFuture.failedFuture(new ServiceException(e.getMessage(), e.getCause()));
         }
     }
@@ -201,6 +228,101 @@ public class TaskServiceImpl implements TaskService {
                 .responseReasonCode(ResponseReasonCode.SUCCESS)
                 .build());
     }
+    @Override
+    public CompletableFuture<ListTasksInternalResponse> listTasks(ListTasksInternalRequest request) {
+        try {
+            // Build the specification outside the lambda
+            final Specification<Task> spec = buildSpecification(request);
+
+            // Pass the final spec to the lambda
+            return CompletableFuture.supplyAsync(() -> taskRepository.findAll(spec))
+                    .thenApply(tasks -> tasks.stream()
+                            .map(taskConverter::doBackward)
+                            .collect(Collectors.toList()))
+                    .thenApply(taskDTOs -> filterTaskDTOsBySelector(taskDTOs, request))
+                    .thenApply(this::buildListTasksInternalResponse)
+                    .exceptionally(this::handleListTasksException);
+        } catch (Exception e) {
+            log.error("Error in listTasks", e);
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    // Extracted method to build the specification
+    private Specification<Task> buildSpecification(ListTasksInternalRequest request) {
+        Specification<Task> spec = withOrganizationUuid(request.getRequestContext().getAppOrgUuid());
+
+        // Apply all filters
+        for (Map.Entry<String, List<String>> filter : request.getFilterAttributes()) {
+            String attributeName = filter.getKey();
+            List<String> attributeValues = filter.getValue();
+
+            switch (attributeName) {
+                case "status":
+                    spec = spec.and(byStatusIn(attributeValues));
+                    break;
+                case "parent_task_uuid":
+                    spec = spec.and(byParentTaskUuidIn(attributeValues));
+                    break;
+                case "assignee":
+                    spec = spec.and(byAssigneeUuidIn(attributeValues));
+                    break;
+                case "author":
+                    spec = spec.and(byAuthorUuidIn(attributeValues));
+                    break;
+                // Add more cases for other filter attributes as needed
+            }
+        }
+
+        return spec;
+    }
+
+    private List<TaskDTO> filterTaskDTOsBySelector(List<TaskDTO> taskDTOs, ListTasksInternalRequest request) {
+        // If no selector is provided, return all tasks with all attributes
+        if (request.getBaseAttributesToSelect() == null || request.getBaseAttributesToSelect().isEmpty()) {
+            return taskDTOs;
+        }
+
+        // TODO: Implement actual filtering of attributes based on selector
+        // This would require a more complex implementation to filter out specific fields
+        // For now, we'll return the full objects
+        return taskDTOs;
+    }
+
+    private ListTasksInternalResponse buildListTasksInternalResponse(List<TaskDTO> taskDTOs) {
+        return ListTasksInternalResponse.builder()
+                .tasks(taskDTOs)
+                .responseResult(ResponseResult.SUCCESS)
+                .responseReasonCode(ResponseReasonCode.SUCCESS)
+                .build();
+    }
+
+    private ListTasksInternalResponse handleListTasksException(Throwable ex) {
+        log.error("handleListTasksException", ex);
+
+        Throwable cause = ex;
+        if (ex instanceof CompletionException) {
+            cause = ex.getCause();
+        }
+
+        ResponseReasonCode reasonCode;
+        if (cause instanceof InvalidRequestError) {
+            reasonCode = ResponseReasonCode.BAD_REQUEST;
+        } else if (cause instanceof NotFoundException) {
+            reasonCode = ResponseReasonCode.BAD_REQUEST;
+        } else if (cause instanceof GatewayTimeoutException) {
+            reasonCode = ResponseReasonCode.TIMEOUT;
+        } else {
+            reasonCode = ResponseReasonCode.INTERNAL_ERROR;
+        }
+
+        return ListTasksInternalResponse.builder()
+                .tasks(Collections.emptyList())
+                .responseResult(ResponseResult.FAILURE)
+                .responseReasonCode(reasonCode)
+                .build();
+    }
+
 
     private UpdateTaskInternalResponse handleUpdateTaskException(Throwable ex) {
         log.error("handleUpdateTaskException", ex);
@@ -234,4 +356,5 @@ public class TaskServiceImpl implements TaskService {
         }
         throw new CompletionException(new ServiceException(cause));
     }
-} 
+
+}

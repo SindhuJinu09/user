@@ -6,11 +6,17 @@ import com.algobrewery.tasksilo.model.internal.GetTaskInternalRequest;
 import com.algobrewery.tasksilo.model.internal.GetTaskInternalResponse;
 import com.algobrewery.tasksilo.model.internal.UpdateTaskInternalRequest;
 import com.algobrewery.tasksilo.model.internal.UpdateTaskInternalResponse;
+import com.algobrewery.tasksilo.model.internal.ListTasksInternalRequest;
+import com.algobrewery.tasksilo.model.internal.ListTasksInternalResponse;
 
 import java.util.concurrent.CompletableFuture;
 
 public interface TaskService {
     CompletableFuture<CreateTaskInternalResponse> createTask(CreateTaskInternalRequest request);
+
     CompletableFuture<GetTaskInternalResponse> getTask(GetTaskInternalRequest request);
+
     CompletableFuture<UpdateTaskInternalResponse> updateTask(UpdateTaskInternalRequest request);
+
+    CompletableFuture<ListTasksInternalResponse> listTasks(ListTasksInternalRequest request);
 }
