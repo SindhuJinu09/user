@@ -308,7 +308,6 @@ public class TaskServiceImpl implements TaskService {
                 .map(taskDTO -> taskDTO.filter(baseAttributes, extensions))
                 .collect(Collectors.toList());
     }
-
     private ListTasksInternalResponse buildListTasksInternalResponse(List<TaskDTO> taskDTOs) {
         return ListTasksInternalResponse.builder()
                 .tasks(taskDTOs)

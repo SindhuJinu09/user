@@ -42,102 +42,106 @@ public class TaskDTO {
      * @param extensions List of extension attributes to include
      * @return A new TaskDTO containing only the selected attributes
      */
+    // TaskDTO.java - Modify the filter method to only include requested fields
     public TaskDTO filter(List<String> baseAttributes, List<String> extensions) {
-        TaskDTOBuilder builder = TaskDTO.builder()
-                .taskUuid(this.taskUuid); // Always include taskUuid
-
         // If both selectors are null or empty, return the full object
         if ((baseAttributes == null || baseAttributes.isEmpty()) &&
                 (extensions == null || extensions.isEmpty())) {
             return this;
         }
 
+        TaskDTO filteredTask = new TaskDTO();
+        // Always include taskUuid
+        filteredTask.setTaskUuid(this.taskUuid);
+
         // Process base attributes if provided
         if (baseAttributes != null && !baseAttributes.isEmpty()) {
             for (String attribute : baseAttributes) {
                 switch (attribute.toLowerCase()) {
                     case "title":
-                        builder.title(this.title);
+                        filteredTask.setTitle(this.title);
                         break;
                     case "description":
-                        builder.description(this.description);
+                        filteredTask.setDescription(this.description);
                         break;
                     case "author":
                     case "authoruuid":
                     case "author_uuid":
-                        builder.authorUuid(this.authorUuid);
+                        filteredTask.setAuthorUuid(this.authorUuid);
                         break;
                     case "assignee":
                     case "assigneeuuid":
                     case "assignee_uuid":
-                        builder.assigneeUuid(this.assigneeUuid)
-                                .assigneeUuidType(this.assigneeUuidType);
+                        filteredTask.setAssigneeUuid(this.assigneeUuid);
+                        filteredTask.setAssigneeUuidType(this.assigneeUuidType);
                         break;
                     case "status":
-                        builder.status(this.status);
+                        filteredTask.setStatus(this.status);
                         break;
                     case "duedate":
                     case "due_at":
                     case "dueat":
-                        builder.dueAt(this.dueAt);
+                        filteredTask.setDueAt(this.dueAt);
                         break;
                     case "organization":
                     case "organization_uuid":
                     case "organizationuuid":
-                        builder.organizationUuid(this.organizationUuid);
+                        filteredTask.setOrganizationUuid(this.organizationUuid);
                         break;
                     case "createdat":
                     case "created_at":
-                        builder.createdAt(this.createdAt);
+                        filteredTask.setCreatedAt(this.createdAt);
                         break;
                     case "updatedat":
                     case "updated_at":
-                        builder.updatedAt(this.updatedAt);
+                        filteredTask.setUpdatedAt(this.updatedAt);
                         break;
                     case "updateactortype":
                     case "update_actor_type":
-                        builder.updateActorType(this.updateActorType);
+                        filteredTask.setUpdateActorType(this.updateActorType);
                         break;
                     case "parenttask":
                     case "parent_task_uuid":
                     case "parenttaskuuid":
-                        builder.parentTaskUuid(this.parentTaskUuid);
+                        filteredTask.setParentTaskUuid(this.parentTaskUuid);
                         break;
                     case "childtasks":
                     case "child_task_uuids":
                     case "childtaskuuids":
-                        builder.childTaskUuids(this.childTaskUuids);
+                        filteredTask.setChildTaskUuids(this.childTaskUuids);
                         break;
                 }
             }
         } else {
             // If no base attributes specified but extensions are, include all base attributes
-            builder.title(this.title)
-                    .description(this.description)
-                    .authorUuid(this.authorUuid)
-                    .assigneeUuid(this.assigneeUuid)
-                    .assigneeUuidType(this.assigneeUuidType)
-                    .status(this.status)
-                    .dueAt(this.dueAt)
-                    .organizationUuid(this.organizationUuid)
-                    .createdAt(this.createdAt)
-                    .updatedAt(this.updatedAt)
-                    .updateActorType(this.updateActorType)
-                    .parentTaskUuid(this.parentTaskUuid)
-                    .childTaskUuids(this.childTaskUuids);
+            filteredTask.setTitle(this.title);
+            filteredTask.setDescription(this.description);
+            filteredTask.setAuthorUuid(this.authorUuid);
+            filteredTask.setAssigneeUuid(this.assigneeUuid);
+            filteredTask.setAssigneeUuidType(this.assigneeUuidType);
+            filteredTask.setStatus(this.status);
+            filteredTask.setDueAt(this.dueAt);
+            filteredTask.setOrganizationUuid(this.organizationUuid);
+            filteredTask.setCreatedAt(this.createdAt);
+            filteredTask.setUpdatedAt(this.updatedAt);
+            filteredTask.setUpdateActorType(this.updateActorType);
+            filteredTask.setParentTaskUuid(this.parentTaskUuid);
+            filteredTask.setChildTaskUuids(this.childTaskUuids);
         }
 
         // Handle extensions
         if (extensions != null && !extensions.isEmpty() && this.extensionsData != null) {
-            Map<String, Object> filteredExtensions = this.extensionsData.entrySet().stream()
-                    .filter(entry -> extensions.contains(entry.getKey()))
-                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            Map<String, Object> filteredExtensions = new HashMap<>();
+            for (String extension : extensions) {
+                if (this.extensionsData.containsKey(extension)) {
+                    filteredExtensions.put(extension, this.extensionsData.get(extension));
+                }
+            }
 
             if (!filteredExtensions.isEmpty()) {
-                builder.extensionsData(filteredExtensions);
+                filteredTask.setExtensionsData(filteredExtensions);
             }
         }
 
-        return builder.build();
-    }
-}
+        return filteredTask;
+    }}
