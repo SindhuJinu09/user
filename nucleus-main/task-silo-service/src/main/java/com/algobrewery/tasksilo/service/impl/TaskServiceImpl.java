@@ -7,8 +7,6 @@ import com.algobrewery.tasksilo.exceptions.NotFoundException;
 import com.algobrewery.tasksilo.exceptions.ServiceException;
 import com.algobrewery.tasksilo.gateway.UserServiceGateway;
 import com.algobrewery.tasksilo.model.entity.Task;
-import com.algobrewery.tasksilo.model.external.ListTasksFilterCriteriaAttribute;
-import com.algobrewery.tasksilo.model.external.ListTasksSelector;
 import com.algobrewery.tasksilo.model.internal.*;
 import com.algobrewery.tasksilo.repository.task.TaskRepository;
 import com.algobrewery.tasksilo.repository.task.TaskSpecifications;
@@ -228,18 +226,24 @@ public class TaskServiceImpl implements TaskService {
                 .responseReasonCode(ResponseReasonCode.SUCCESS)
                 .build());
     }
+
     @Override
     public CompletableFuture<ListTasksInternalResponse> listTasks(ListTasksInternalRequest request) {
         try {
-            // Build the specification outside the lambda
+            log.info("Processing listTasks request: {}", request);
+
+            // Build the specification for filtering
             final Specification<Task> spec = buildSpecification(request);
 
-            // Pass the final spec to the lambda
-            return CompletableFuture.supplyAsync(() -> taskRepository.findAll(spec))
+            return CompletableFuture.supplyAsync(() -> {
+                        List<Task> tasks = taskRepository.findAll(spec);
+                        log.info("Found {} tasks matching criteria", tasks.size());
+                        return tasks;
+                    })
                     .thenApply(tasks -> tasks.stream()
                             .map(taskConverter::doBackward)
                             .collect(Collectors.toList()))
-                    .thenApply(taskDTOs -> filterTaskDTOsBySelector(taskDTOs, request))
+                    .thenApply(taskDTOs -> applySelector(taskDTOs, request))
                     .thenApply(this::buildListTasksInternalResponse)
                     .exceptionally(this::handleListTasksException);
         } catch (Exception e) {
@@ -248,16 +252,18 @@ public class TaskServiceImpl implements TaskService {
         }
     }
 
-    // Extracted method to build the specification
+    // Build specification based on filter criteria
     private Specification<Task> buildSpecification(ListTasksInternalRequest request) {
         Specification<Task> spec = withOrganizationUuid(request.getRequestContext().getAppOrgUuid());
 
-        // Apply all filters
+        // Apply all filters based on attributes and their values
         for (Map.Entry<String, List<String>> filter : request.getFilterAttributes()) {
             String attributeName = filter.getKey();
             List<String> attributeValues = filter.getValue();
 
-            switch (attributeName) {
+            log.debug("Applying filter: {} with values: {}", attributeName, attributeValues);
+
+            switch (attributeName.toLowerCase()) {
                 case "status":
                     spec = spec.and(byStatusIn(attributeValues));
                     break;
@@ -270,23 +276,37 @@ public class TaskServiceImpl implements TaskService {
                 case "author":
                     spec = spec.and(byAuthorUuidIn(attributeValues));
                     break;
-                // Add more cases for other filter attributes as needed
+                case "task_uuid":
+                    if (attributeValues.size() == 1) {
+                        spec = spec.and(withTaskUuid(attributeValues.get(0)));
+                    }
+                    break;
+                // Add more filter criteria as needed
+                default:
+                    log.warn("Unsupported filter attribute: {}", attributeName);
             }
         }
 
         return spec;
     }
 
-    private List<TaskDTO> filterTaskDTOsBySelector(List<TaskDTO> taskDTOs, ListTasksInternalRequest request) {
-        // If no selector is provided, return all tasks with all attributes
-        if (request.getBaseAttributesToSelect() == null || request.getBaseAttributesToSelect().isEmpty()) {
+    // Apply selector to filter task attributes
+    private List<TaskDTO> applySelector(List<TaskDTO> taskDTOs, ListTasksInternalRequest request) {
+        List<String> baseAttributes = request.getBaseAttributesToSelect();
+        List<String> extensions = request.getExtensionsToSelect();
+
+        // If no selector is specified, return all attributes
+        if ((baseAttributes == null || baseAttributes.isEmpty()) &&
+                (extensions == null || extensions.isEmpty())) {
             return taskDTOs;
         }
 
-        // TODO: Implement actual filtering of attributes based on selector
-        // This would require a more complex implementation to filter out specific fields
-        // For now, we'll return the full objects
-        return taskDTOs;
+        log.debug("Applying selector - baseAttributes: {}, extensions: {}", baseAttributes, extensions);
+
+        // Apply filter to each task
+        return taskDTOs.stream()
+                .map(taskDTO -> taskDTO.filter(baseAttributes, extensions))
+                .collect(Collectors.toList());
     }
 
     private ListTasksInternalResponse buildListTasksInternalResponse(List<TaskDTO> taskDTOs) {
@@ -323,7 +343,6 @@ public class TaskServiceImpl implements TaskService {
                 .build();
     }
 
-
     private UpdateTaskInternalResponse handleUpdateTaskException(Throwable ex) {
         log.error("handleUpdateTaskException", ex);
         Throwable cause = ex;
@@ -356,5 +375,4 @@ public class TaskServiceImpl implements TaskService {
         }
         throw new CompletionException(new ServiceException(cause));
     }
-
 }

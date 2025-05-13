@@ -1,6 +1,6 @@
 package com.algobrewery.tasksilo.converter;
 
-import com.algobrewery.tasksilo.model.external.ListTasksFilterCriteriaAttribute;
+import com.algobrewery.tasksilo.model.external.ListTasksFilterCriteria;
 import com.algobrewery.tasksilo.model.external.ListTasksRequest;
 import com.algobrewery.tasksilo.model.internal.ListTasksInternalRequest;
 import org.springframework.stereotype.Component;
@@ -23,15 +23,28 @@ public class ListTasksRequestConverter extends ExternalToInternalRequestConverte
             String regionID,
             ListTasksRequest external) {
 
+        // Extract filter attributes
         List<Map.Entry<String, List<String>>> filterAttributes = external.getFilterCriteria().getAttributes().stream()
                 .map(attr -> new AbstractMap.SimpleEntry<>(attr.getName(), attr.getValues()))
                 .collect(Collectors.toList());
 
-        List<String> baseAttributesToSelect = external.getSelector() != null ?
-                external.getSelector().getBase_attributes() : new ArrayList<>();
+        // Extract selector attributes - handle null cases
+        List<String> baseAttributesToSelect = null;
+        List<String> extensionsToSelect = null;
 
-        List<String> extensionsToSelect = external.getSelector() != null ?
-                external.getSelector().getExtensions() : new ArrayList<>();
+        if (external.getSelector() != null) {
+            baseAttributesToSelect = external.getSelector().getBase_attributes();
+            extensionsToSelect = external.getSelector().getExtensions();
+        }
+
+        // If null, initialize as empty lists to avoid null pointer exceptions
+        if (baseAttributesToSelect == null) {
+            baseAttributesToSelect = new ArrayList<>();
+        }
+
+        if (extensionsToSelect == null) {
+            extensionsToSelect = new ArrayList<>();
+        }
 
         return ListTasksInternalRequest.builder()
                 .filterAttributes(filterAttributes)
